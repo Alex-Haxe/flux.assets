@@ -71,5 +71,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Import assets from Google Drive"
+          git commit -m "fnf assets"
           git push
