@@ -1,0 +1,75 @@
+name: Import ZIP from Google Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      drive_link:
+        description: "Google Drive share link or file ID"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install unzip
+        run: sudo apt-get update && sudo apt-get install -y unzip
+
+      - name: Download ZIP
+        shell: bash
+        run: |
+          INPUT="${{ github.event.inputs.drive_link }}"
+
+          if [[ "$INPUT" =~ /file/d/([^/]+) ]]; then
+            FILE_ID="${BASH_REMATCH[1]}"
+          elif [[ "$INPUT" =~ id=([^&]+) ]]; then
+            FILE_ID="${BASH_REMATCH[1]}"
+          else
+            FILE_ID="$INPUT"
+          fi
+
+          echo "Downloading file ID: $FILE_ID"
+
+          wget --save-cookies cookies.txt \
+            "https://docs.google.com/uc?export=download&id=$FILE_ID" \
+            -O- > response.html
+
+          CONFIRM=$(grep -o 'confirm=[^&]*' response.html | head -n1 | cut -d= -f2)
+
+          if [ -n "$CONFIRM" ]; then
+            wget --load-cookies cookies.txt \
+              "https://docs.google.com/uc?export=download&confirm=$CONFIRM&id=$FILE_ID" \
+              -O archive.zip
+          else
+            wget \
+              "https://docs.google.com/uc?export=download&id=$FILE_ID" \
+              -O archive.zip
+          fi
+
+      - name: Extract ZIP
+        run: unzip -o archive.zip -d .
+
+      - name: Remove ZIP
+        run: rm -f archive.zip cookies.txt response.html
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          git add .
+
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+
+          git commit -m "Import assets from Google Drive"
+          git push
